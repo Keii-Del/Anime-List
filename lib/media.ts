@@ -1,6 +1,7 @@
 export type Media = {
   id: number;
-  title: { romaji: string; english: string | null };
+  title: { romaji: string; english: string | null; native: string | null };
+  synonyms: string[];
   description: string | null;
   genres: string[];
   seasonYear: number | null;
@@ -29,7 +30,7 @@ export type Media = {
 const Q = `
 query ($id: Int) {
   Media(id: $id, type: ANIME) {
-    id title { romaji english } description(asHtml: false) genres seasonYear
+    id title { romaji english native } synonyms description(asHtml: false) genres seasonYear
     averageScore episodes status countryOfOrigin
     coverImage { extraLarge color }
     trailer { id site }
@@ -51,5 +52,10 @@ export async function getMedia(id: number): Promise<Media | null> {
     next: { revalidate: 3600 },
   });
   if (!res.ok) return null;
-  return (await res.json()).data?.Media ?? null;
+  const media = (await res.json()).data?.Media;
+  if (!media) return null;
+  return {
+    ...media,
+    synonyms: Array.isArray(media.synonyms) ? media.synonyms : [],
+  } as Media;
 }

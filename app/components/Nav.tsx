@@ -23,7 +23,7 @@ export default function Nav() {
         <div className="hidden gap-7 text-[15px] text-muted md:flex">
           <a href="#browse" className="hover:text-white">Browse</a>
           <a href="#sync" className="hover:text-white">Schedule</a>
-          <a href="#search" className="hover:text-white">Search</a>
+          <a href="/anime" className="hover:text-white">Search</a>
         </div>
         <a href="#browse" className="rounded-full bg-white px-4 py-1.5 font-heading text-sm text-black">Watch</a>
       </nav>

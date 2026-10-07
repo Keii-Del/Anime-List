@@ -1,6 +1,7 @@
 "use client";
 import { useRef } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import gsap from "gsap";
 import type { Title } from "@/lib/anilist";
 
@@ -17,11 +18,9 @@ export default function MediaCard({ t }: { t: Title }) {
   const leave = () => gsap.to(ref.current, { rotateX: 0, rotateY: 0, duration: 0.6, overwrite: "auto" });
 
   return (
-    <a
+    <Link
       ref={ref}
-      href={t.link}
-      target="_blank"
-      rel="noreferrer"
+      href={`/watch/${t.id}`}
       onMouseMove={move}
       onMouseLeave={leave}
       className={`mc group block overflow-hidden rounded-2xl border border-white/[0.07] bg-card transition-[border-color,box-shadow] duration-300 ${
@@ -52,6 +51,6 @@ export default function MediaCard({ t }: { t: Title }) {
           ))}
         </div>
       </div>
-    </a>
+    </Link>
   );
 }

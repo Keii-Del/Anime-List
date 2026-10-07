@@ -1,6 +1,7 @@
 import { getTrending, getSchedule } from "@/lib/anilist";
 import Nav from "./components/Nav";
 import Hero from "./components/Hero";
+import LibraryRows from "./components/LibraryRows";
 import CatalogTabs from "./components/CatalogTabs";
 import Schedule from "./components/Bento/Schedule";
 import AudioToggle from "./components/Bento/AudioToggle";
@@ -17,6 +18,7 @@ export default async function Page() {
     <>
       <Nav />
       <Hero feature={feature} />
+      <LibraryRows />
       <CatalogTabs all={all} anime={jp.items} donghua={cn.items} />
 
       <section id="sync" className="mx-auto max-w-6xl px-6 pb-28">

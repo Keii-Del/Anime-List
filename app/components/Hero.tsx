@@ -1,6 +1,7 @@
 "use client";
 import { useRef } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import type { Title } from "@/lib/anilist";
@@ -36,10 +37,8 @@ export default function Hero({ feature }: { feature: Title }) {
         </div>
       </div>
 
-      <a
-        href={feature.link}
-        target="_blank"
-        rel="noreferrer"
+      <Link
+        href={`/watch/${feature.id}`}
         className="rv block rounded-2xl border border-white/[0.07] bg-card p-3 transition hover:border-jade hover:shadow-[0_0_28px_-8px_#00E5A3]"
       >
         <div className="relative aspect-[2/3] overflow-hidden rounded-lg" style={{ background: feature.color ?? "#111318" }}>
@@ -62,7 +61,7 @@ export default function Hero({ feature }: { feature: Title }) {
             {feature.nextEp ? `EP ${feature.nextEp - 1} · STREAM READY` : `${feature.episodes ?? "?"} EPS · COMPLETE`}
           </div>
         </div>
-      </a>
+      </Link>
     </section>
   );
 }

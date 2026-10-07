@@ -6,6 +6,8 @@ import { FULL_EPISODES } from "@/lib/sources";
 import Player from "@/app/components/Player";
 import Nav from "@/app/components/Nav";
 import Footer from "@/app/components/Footer";
+import WatchlistButton from "@/app/components/WatchlistButton";
+import HistoryTracker from "@/app/components/HistoryTracker";
 
 export default async function Watch({
   params,
@@ -16,17 +18,21 @@ export default async function Watch({
 }) {
   const { id } = await params;
   const { ep } = await searchParams;
-  const m = await getMedia(Number(id));
+  const numericId = Number(id);
+  if (!Number.isInteger(numericId)) notFound();
+
+  const m = await getMedia(numericId);
   if (!m) notFound();
 
   const name = m.title.english ?? m.title.romaji;
   const cn = m.countryOfOrigin === "CN";
   const text = cn ? "text-jade" : "text-ember";
-  const full = FULL_EPISODES[m.id];
   const desc = (m.description ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   const legal = m.externalLinks.filter((l) => l.type === "STREAMING");
   const recs = m.recommendations.nodes.flatMap((n) => (n.mediaRecommendation ? [n.mediaRecommendation] : []));
 
+  // Video sources you control: lib/sources.ts (your own HLS files or official YouTube uploads)
+  const full = FULL_EPISODES[m.id];
   const eps = full?.type === "hls" ? full.episodes : [];
   const idx = Math.max(0, eps.findIndex((e) => String(e.n) === ep));
   const cur = eps[idx];
@@ -52,10 +58,10 @@ export default async function Watch({
   return (
     <>
       <Nav />
+      <HistoryTracker id={m.id} name={name} cover={m.coverImage.extraLarge} origin={m.countryOfOrigin} ep={cur?.n} />
       <main className="mx-auto max-w-[1400px] px-4 pb-20 pt-24 sm:px-6">
         <nav className="mb-4 font-mono text-xs text-muted">
-          <Link href="/" className="hover:text-white">Home</Link> / <Link href="/anime" className="hover:text-white">Anime</Link> /{" "}
-          <span className="text-white">{name}</span>
+          <Link href="/" className="hover:text-white">Home</Link> / <Link href="/anime" className="hover:text-white">Anime</Link> / <span className="text-white">{name}</span>
         </nav>
 
         <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
@@ -114,7 +120,7 @@ export default async function Watch({
                 <>
                   <Image src={m.coverImage.extraLarge} alt={name} fill className="object-cover opacity-30" />
                   <div className="absolute inset-0 grid place-items-center px-6 text-center font-mono text-sm text-muted">
-                    No embeddable video for this title. Use the official sources on the right.
+                    No video for this title yet. Use the official sources on the right.
                   </div>
                 </>
               )}
@@ -124,7 +130,6 @@ export default async function Watch({
               <div className="font-mono text-[13px]">
                 <span className="text-muted">You are watching </span>
                 <span className={text}>{cur ? `EP ${cur.n}` : label || "—"}</span>
-                {cur && <span className="text-muted"> · hosted source</span>}
               </div>
               <div className="flex gap-2">
                 {prev ? <Link href={`/watch/${m.id}?ep=${prev.n}`} className={btn}>← Prev</Link> : <span className={off}>← Prev</span>}
@@ -143,7 +148,8 @@ export default async function Watch({
               <Image src={m.coverImage.extraLarge} alt={name} fill sizes="160px" className="object-cover" />
             </div>
             <h1 className="mt-4 font-heading text-2xl leading-[1.3]">{name}</h1>
-            <div className="mt-3 flex flex-wrap gap-1.5 font-mono text-[11px]">
+            <WatchlistButton entry={{ id: m.id, name, cover: m.coverImage.extraLarge, origin: m.countryOfOrigin }} />
+            <div className="mt-4 flex flex-wrap gap-1.5 font-mono text-[11px]">
               {m.format && <span className="rounded border border-white/[0.07] px-2 py-0.5 text-muted">{m.format.replace("_", " ")}</span>}
               {m.seasonYear && <span className="rounded border border-white/[0.07] px-2 py-0.5 text-muted">{m.seasonYear}</span>}
               <span className="rounded border border-white/[0.07] px-2 py-0.5 text-muted">{m.episodes ?? "?"} EP</span>
@@ -161,8 +167,7 @@ export default async function Watch({
               <div className="font-heading text-lg">Watch officially</div>
               {legal.length === 0 && <p className="text-[14px] text-muted">No licensed streams listed.</p>}
               {legal.map((l) => (
-                <a key={l.url} href={l.url} target="_blank" rel="noreferrer"
-                   className="block rounded-lg border border-white/[0.07] px-3 py-2 font-mono text-[13px] hover:border-white/30">
+                <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="block rounded-lg border border-white/[0.07] px-3 py-2 font-mono text-[13px] hover:border-white/30">
                   {l.site} ↗
                 </a>
               ))}
@@ -171,17 +176,15 @@ export default async function Watch({
         </div>
 
         {recs.length > 0 && (
-          <section className="mt-14">
+          <section className="mt-16">
             <h2 className="mb-5 font-heading text-[32px] leading-[1.2]">Recommended for you</h2>
-            <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
               {recs.slice(0, 12).map((r) => (
-                <Link key={r.id} href={`/watch/${r.id}`} className="group block">
-                  <div className={`relative aspect-[2/3] overflow-hidden rounded-xl border border-white/[0.07] transition ${
-                    r.countryOfOrigin === "CN" ? "group-hover:border-jade" : "group-hover:border-ember"
-                  }`}>
-                    <Image src={r.coverImage.large} alt="" fill sizes="16vw" className="object-cover transition-transform duration-500 group-hover:scale-[1.02]" />
+                <Link key={r.id} href={`/watch/${r.id}`} className="group">
+                  <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-white/[0.07] bg-card">
+                    <Image src={r.coverImage.large} alt={r.title.english ?? r.title.romaji} fill sizes="220px" className="object-cover transition duration-300 group-hover:scale-105" />
                   </div>
-                  <div className="mt-2 line-clamp-2 text-[14px] leading-snug">{r.title.english ?? r.title.romaji}</div>
+                  <div className="mt-2 truncate text-sm font-medium">{r.title.english ?? r.title.romaji}</div>
                 </Link>
               ))}
             </div>

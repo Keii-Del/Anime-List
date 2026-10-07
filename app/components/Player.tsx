@@ -11,6 +11,9 @@ type Props = {
   storageKey: string; // for resume position
   accent?: "jade" | "ember";
   nextHref?: string; // go here when the video ends
+  skipIntro?: { start: number; end: number };
+  skipOutro?: { start: number; end: number };
+  onPlaybackError?: () => void;
 };
 
 const fmt = (s: number) => {
@@ -19,7 +22,7 @@ const fmt = (s: number) => {
   return (h ? `${h}:${String(m).padStart(2, "0")}` : `${m}`) + `:${String(x).padStart(2, "0")}`;
 };
 
-export default function Player({ src, poster, subtitles = [], storageKey, accent = "jade", nextHref }: Props) {
+export default function Player({ src, poster, subtitles = [], storageKey, accent = "jade", nextHref, skipIntro, skipOutro, onPlaybackError }: Props) {
   const router = useRouter();
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
@@ -37,6 +40,11 @@ export default function Player({ src, poster, subtitles = [], storageKey, accent
   const [sub, setSub] = useState(-1);
   const [menu, setMenu] = useState<null | "q" | "c">(null);
   const [show, setShow] = useState(true);
+  const [skipLabel, setSkipLabel] = useState<"intro" | "outro" | null>(null);
+  const [autoplayMuted, setAutoplayMuted] = useState(false);
+  const playbackErrorReported = useRef(false);
+  const onPlaybackErrorRef = useRef(onPlaybackError);
+  onPlaybackErrorRef.current = onPlaybackError;
 
   const text = accent === "jade" ? "text-jade" : "text-ember";
 
@@ -44,16 +52,42 @@ export default function Player({ src, poster, subtitles = [], storageKey, accent
   useEffect(() => {
     const v = vid.current!;
     let dead = false;
-    if (v.canPlayType("application/vnd.apple.mpegurl") || !src.endsWith(".m3u8")) {
+    playbackErrorReported.current = false;
+    const isHls = /\.m3u8/i.test(src);
+    const startPlayback = async () => {
+      try {
+        await v.play();
+        setAutoplayMuted(false);
+      } catch {
+        v.muted = true;
+        try {
+          await v.play();
+          setAutoplayMuted(true);
+        } catch {
+          setPlaying(false);
+        }
+      }
+    };
+
+    if (v.canPlayType("application/vnd.apple.mpegurl") || !isHls) {
       v.src = src; // Safari native HLS, or plain mp4
+      v.addEventListener("loadedmetadata", startPlayback, { once: true });
     } else {
       import("hls.js").then(({ default: H }) => {
         if (dead || !H.isSupported()) return;
-        const h = new H();
+        const h = new H({ enableWorker: true });
         hls.current = h;
         h.loadSource(src);
         h.attachMedia(v);
-        h.on(H.Events.MANIFEST_PARSED, (_, d) => setLevels(d.levels.map((l) => l.height)));
+        h.on(H.Events.MANIFEST_PARSED, (_, d) => {
+          setLevels(d.levels.map((l) => l.height).filter((h) => h > 0));
+          void startPlayback();
+        });
+        h.on(H.Events.ERROR, (_, data) => {
+          if (!data.fatal || playbackErrorReported.current) return;
+          playbackErrorReported.current = true;
+          onPlaybackErrorRef.current?.();
+        });
       });
     }
     let saved = 0;
@@ -63,6 +97,9 @@ export default function Player({ src, poster, subtitles = [], storageKey, accent
     return () => {
       dead = true;
       v.removeEventListener("loadedmetadata", onMeta);
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
       hls.current?.destroy();
       hls.current = null;
     };
@@ -70,12 +107,20 @@ export default function Player({ src, poster, subtitles = [], storageKey, accent
 
   // subtitle selection
   useEffect(() => {
-    const tracks = vid.current?.textTracks;
-    if (!tracks) return;
-    for (let i = 0; i < tracks.length; i++) tracks[i].mode = i === sub ? "showing" : "hidden";
+    const video = box.current?.querySelector("video");
+    if (!video) return;
+    const tracks = Array.from(video.textTracks);
+    tracks.forEach((track, i) => {
+      track.mode = i === sub ? "showing" : "hidden";
+    });
   }, [sub]);
 
-  const toggle = () => { const v = vid.current!; v.paused ? v.play() : v.pause(); };
+  const toggle = () => {
+    const v = vid.current;
+    if (!v) return;
+    if (v.paused) void v.play();
+    else v.pause();
+  };
   const seek = (d: number) => { const v = vid.current!; v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + d)); };
   const fullscreen = () => (document.fullscreenElement ? document.exitFullscreen() : box.current?.requestFullscreen());
   const pickLevel = (n: number) => { if (hls.current) hls.current.currentLevel = n; setLevel(n); setMenu(null); };
@@ -86,6 +131,19 @@ export default function Player({ src, poster, subtitles = [], storageKey, accent
     if (idle.current) clearTimeout(idle.current);
     idle.current = setTimeout(() => !vid.current?.paused && setShow(false), 2500);
   };
+
+  useEffect(() => {
+    const v = vid.current;
+    if (!v) return;
+    const updateSkip = () => {
+      const now = v.currentTime;
+      if (skipOutro && now >= skipOutro.start && now <= skipOutro.end) setSkipLabel("outro");
+      else if (skipIntro && now >= skipIntro.start && now <= skipIntro.end) setSkipLabel("intro");
+      else setSkipLabel(null);
+    };
+    v.addEventListener("timeupdate", updateSkip);
+    return () => v.removeEventListener("timeupdate", updateSkip);
+  }, [skipIntro, skipOutro, src]);
 
   const onKey = (e: React.KeyboardEvent) => {
     const v = vid.current!;
@@ -116,11 +174,17 @@ export default function Player({ src, poster, subtitles = [], storageKey, accent
     >
       <video
         ref={vid}
+        autoPlay
         poster={poster}
         playsInline
         crossOrigin="anonymous"
         onClick={toggle}
         onEnded={() => nextHref && router.push(nextHref)}
+        onError={() => {
+          if (playbackErrorReported.current) return;
+          playbackErrorReported.current = true;
+          onPlaybackErrorRef.current?.();
+        }}
         onPlay={() => setPlaying(true)}
         onPause={() => { setPlaying(false); setShow(true); }}
         onLoadedMetadata={(e) => setDur(e.currentTarget.duration)}
@@ -144,6 +208,32 @@ export default function Player({ src, poster, subtitles = [], storageKey, accent
         <button onClick={toggle} aria-label="Play"
           className="absolute inset-0 m-auto grid h-16 w-16 place-items-center rounded-full bg-white text-xl text-obsidian">
           ▶
+        </button>
+      )}
+
+      {autoplayMuted && playing && (
+        <button
+          onClick={() => {
+            if (!vid.current) return;
+            vid.current.muted = false;
+            setAutoplayMuted(false);
+          }}
+          className={`absolute right-4 top-4 z-20 rounded-xl border px-3 py-2 font-mono text-[11px] backdrop-blur ${accent === "jade" ? "border-jade/40 bg-jade/15 text-jade" : "border-ember/40 bg-ember/15 text-ember"}`}
+        >
+          Click for sound
+        </button>
+      )}
+
+      {skipLabel && (
+        <button
+          onClick={() => {
+            const range = skipLabel === "intro" ? skipIntro : skipOutro;
+            if (range && vid.current) vid.current.currentTime = range.end;
+            setSkipLabel(null);
+          }}
+          className={`absolute bottom-20 right-4 z-20 rounded-xl border px-4 py-2 font-mono text-[12px] backdrop-blur ${accent === "jade" ? "border-jade/40 bg-jade/15 text-jade" : "border-ember/40 bg-ember/15 text-ember"}`}
+        >
+          Skip {skipLabel}
         </button>
       )}
 
